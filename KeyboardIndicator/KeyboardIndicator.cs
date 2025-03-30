@@ -146,26 +146,17 @@ namespace KeyboardIndicator
         public KeyboardIndicator()
         {
             InitializeComponent();
-            numLockOverlay = new NumLockOverlay();
             trayMenu = new ContextMenu();
 
-            bool currentStartupStatus = Properties.Settings.Default.Startup; // 获取当前开机自启动状态
-            string startUpStatus ="";
-            if (currentStartupStatus)
-            {
-                startUpStatus = "已开启";
-            }
-            else
-            {
-                startUpStatus = "未开启";
-            }
+            bool currentStartupStatus = Properties.Settings.Default.Startup;
+            string startUpStatus = currentStartupStatus ? "已开启" : "未开启";
             
-            trayMenu.MenuItems.Add("开机自启动状态:"+startUpStatus, ToggleStartup);
+            trayMenu.MenuItems.Add("开机自启动状态:" + startUpStatus, ToggleStartup);
 
-            // 将右键菜单关联到 notifyIconNUM
+            // 将右键菜单关联到通知图标
             notifyIconNUM.ContextMenu = trayMenu;
-            // 将右键菜单关联到 notifyIconCAPS，如果需要的话
             notifyIconCAPS.ContextMenu = trayMenu;
+            
             try
             {
                 showNumLock = ConfigurationManager.AppSettings["NumLock"].ToUpper() == "Y";
@@ -189,6 +180,9 @@ namespace KeyboardIndicator
                 showNumLock = true;
             }
 
+            // 在设置钩子前初始化Overlay
+            InitializeOverlay();
+            
             this.SetStatus();
             this.gHookProc = new KeyboardIndicator.HookProc(this.KeyBoardHookProc);
             KeyboardIndicator.SetWindowsHookEx(WH_KEYBOARD_LL, this.gHookProc, IntPtr.Zero, 0);
@@ -264,6 +258,23 @@ namespace KeyboardIndicator
             //MessageBox.Show(sender.ToString()+ e.ToString()+ icon.Text, "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
+        private void InitializeOverlay()
+        {
+            try
+            {
+                numLockOverlay = new NumLockOverlay();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("无法初始化NumLockOverlay: " + ex.Message);
+            }
+        }
+
+        private void KeyboardIndicator_Load(object sender, EventArgs e)
+        {
+            // 不再需要在这里初始化
+            // InitializeOverlay();
+        }
 
         public int KeyBoardHookProc(int nCode, int wParam, IntPtr lParam)
         {
@@ -308,6 +319,8 @@ namespace KeyboardIndicator
                                         {
                                             numLockOverlay.ShowStatus(currentState, 1000);
                                         }
+                                        Debug.WriteLine("显示NumLock状态: " + currentState);
+                                        Debug.WriteLine(numLockOverlay==null);
                                     }
                                     catch (Exception ex)
                                     {

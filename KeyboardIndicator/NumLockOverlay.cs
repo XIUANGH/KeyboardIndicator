@@ -1,18 +1,24 @@
 using System;
 using System.Drawing;
+using System.Windows.Forms;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Diagnostics;
 
 namespace KeyboardIndicator
 {
     public class NumLockOverlay : IDisposable
     {
+        private StatusForm statusForm;
         private bool disposed = false;
-        private IntPtr hwnd = IntPtr.Zero;
-        private System.Threading.Timer closeTimer;
+        private static readonly object syncLock = new object();
+        
+        // 定义兼容.NET 2.0的委托
+        private delegate void NoParamDelegate();
+        private delegate void StatusUpdateDelegate(bool isNumLockOn, int displayTimeMs);
         
         public NumLockOverlay()
         {
+            // 不在构造函数中创建窗体，延迟到需要时创建
         }
         
         public void ShowStatus(bool isNumLockOn, int displayTimeMs)
@@ -21,86 +27,65 @@ namespace KeyboardIndicator
             
             try
             {
-                string text = isNumLockOn ? "NumLock: ON" : "NumLock: OFF";
+                Debug.WriteLine("ShowStatus被调用: NumLock=" + isNumLockOn);
                 
-                // 创建关闭消息定时器
-                if (closeTimer != null)
+                // 在UI线程上创建和显示窗体
+                if (statusForm == null || statusForm.IsDisposed)
                 {
-                    closeTimer.Dispose();
-                }
-                closeTimer = new System.Threading.Timer(CloseMessageCallback, null, displayTimeMs, System.Threading.Timeout.Infinite);
-                
-                // 显示系统消息
-                string title = "NumLock Status";
-                MessageBeep(0); // 播放默认声音
-                
-                // 转换以确保标题和内容的编码正确
-                byte[] titleBytes = Encoding.Default.GetBytes(title);
-                byte[] textBytes = Encoding.Default.GetBytes(text);
-                string encodedTitle = Encoding.Default.GetString(titleBytes);
-                string encodedText = Encoding.Default.GetString(textBytes);
-                
-                // 显示消息窗口
-                hwnd = FindWindow(null, encodedTitle);
-                if (hwnd != IntPtr.Zero)
-                {
-                    // 关闭之前的窗口
-                    SendMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                    // 创建窗体
+                    CreateStatusForm();
                 }
                 
-                ShowTipWindow(encodedTitle, encodedText);
+                // 更新和显示窗体
+                if (statusForm != null && !statusForm.IsDisposed)
+                {
+                    if (statusForm.InvokeRequired)
+                    {
+                        statusForm.Invoke(new StatusUpdateDelegate(UpdateAndShowForm), 
+                            new object[] { isNumLockOn, displayTimeMs });
+                    }
+                    else
+                    {
+                        UpdateAndShowForm(isNumLockOn, displayTimeMs);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("NumLockOverlay.ShowStatus错误: " + ex.Message);
+                Debug.WriteLine("NumLockOverlay.ShowStatus错误: " + ex.Message + "\n" + ex.StackTrace);
             }
         }
         
-        private void CloseMessageCallback(object state)
+        private void CreateStatusForm()
         {
             try
             {
-                string title = "NumLock Status";
-                byte[] titleBytes = Encoding.Default.GetBytes(title);
-                string encodedTitle = Encoding.Default.GetString(titleBytes);
-                
-                IntPtr hwnd = FindWindow(null, encodedTitle);
-                if (hwnd != IntPtr.Zero)
+                lock (syncLock)
                 {
-                    SendMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                    if (statusForm == null || statusForm.IsDisposed)
+                    {
+                        statusForm = new StatusForm();
+                        Debug.WriteLine("已创建新的StatusForm");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("关闭消息窗口时出错: " + ex.Message);
+                Debug.WriteLine("创建状态窗体时出错: " + ex.Message);
             }
         }
         
-        private void ShowTipWindow(string title, string text)
+        private void UpdateAndShowForm(bool isNumLockOn, int displayTimeMs)
         {
             try
             {
-                int timeout = 1; // 1秒超时
-                // 使用MB_TOPMOST标志确保窗口置顶 (0x00040000)
-                uint flags = 0x00040000 | 0x00000000; // MB_TOPMOST | MB_OK
-                MessageBoxTimeout(IntPtr.Zero, text, title, flags, 0, (uint)(timeout * 1000));
-                
-                // 找到消息窗口并确保它位于前台
-                System.Threading.Thread.Sleep(50); // 短暂延迟确保窗口创建
-                IntPtr hwnd = FindWindow(null, title);
-                if (hwnd != IntPtr.Zero)
-                {
-                    // 设置窗口为前台窗口 
-                    SetForegroundWindow(hwnd);
-                    
-                    // 设置窗口置顶
-                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, 
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-                }
+                Debug.WriteLine("更新窗体状态: NumLock=" + isNumLockOn);
+                statusForm.SetStatus(isNumLockOn);
+                statusForm.ShowForDuration(displayTimeMs);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("ShowTipWindow错误: " + ex.Message);
+                Debug.WriteLine("更新状态窗体时出错: " + ex.Message);
             }
         }
         
@@ -110,23 +95,45 @@ namespace KeyboardIndicator
             {
                 try
                 {
-                    if (closeTimer != null)
+                    if (statusForm != null && !statusForm.IsDisposed)
                     {
-                        closeTimer.Dispose();
-                        closeTimer = null;
-                    }
-                    
-                    if (hwnd != IntPtr.Zero)
-                    {
-                        SendMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
-                        hwnd = IntPtr.Zero;
+                        try
+                        {
+                            if (statusForm.InvokeRequired)
+                            {
+                                statusForm.Invoke(new NoParamDelegate(CloseStatusForm));
+                            }
+                            else
+                            {
+                                CloseStatusForm();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("关闭状态窗体时出错: " + ex.Message);
+                        }
                     }
                 }
                 catch { }
                 
                 disposed = true;
             }
+            
             GC.SuppressFinalize(this);
+        }
+        
+        private void CloseStatusForm()
+        {
+            try
+            {
+                statusForm.Close();
+                statusForm.Dispose();
+                statusForm = null;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("关闭状态窗体时出错: " + ex.Message);
+            }
         }
         
         ~NumLockOverlay()
@@ -134,33 +141,138 @@ namespace KeyboardIndicator
             Dispose();
         }
         
-        // Windows API
-        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        private static extern bool MessageBeep(uint uType);
-        
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-        
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, UInt32 Msg, IntPtr wParam, IntPtr lParam);
-        
-        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        private static extern int MessageBoxTimeout(IntPtr hwnd, String text, String title, 
-            uint type, uint wLanguageId, uint dwMilliseconds);
+        // 用于显示NumLock状态的窗体
+        private class StatusForm : Form
+        {
+            private Label statusLabel;
+            private System.Windows.Forms.Timer closeTimer;
             
-        private const UInt32 WM_CLOSE = 0x0010;
-        
-        // 添加必要的Windows API声明
-        private const int SWP_NOMOVE = 0x0002;
-        private const int SWP_NOSIZE = 0x0001;
-        private const int SWP_SHOWWINDOW = 0x0040;
-        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+            public StatusForm()
+            {
+                InitializeComponents();
+                this.Shown += (s, e) => this.SetWindowPos();
+            }
+            
+            private void InitializeComponents()
+            {
+                try
+                {
+                    // 基本窗体设置
+                    this.FormBorderStyle = FormBorderStyle.None;
+                    this.StartPosition = FormStartPosition.CenterScreen;
+                    this.ShowInTaskbar = false;
+                    this.TopMost = true;
+                    this.Size = new Size(180, 60);
+                    this.BackColor = Color.Black;
+                    this.Opacity = 0.8;
+                    
+                    // 状态标签设置
+                    statusLabel = new Label();
+                    statusLabel.Dock = DockStyle.Fill;
+                    statusLabel.Font = new Font("微软雅黑", 16F, FontStyle.Bold);
+                    statusLabel.ForeColor = Color.White;
+                    statusLabel.TextAlign = ContentAlignment.MiddleCenter;
+                    statusLabel.BackColor = Color.Transparent;
+                    statusLabel.Text = "初始化...";
+                    this.Controls.Add(statusLabel);
+                    
+                    // 初始化定时器
+                    closeTimer = new System.Windows.Forms.Timer();
+                    closeTimer.Interval = 1000;
+                    closeTimer.Tick += (s, e) => {
+                        Debug.WriteLine("计时器触发，隐藏窗体");
+                        closeTimer.Stop();
+                        this.Hide();
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("初始化窗体组件错误: " + ex.Message);
+                }
+            }
+            
+            // 设置窗体显示的状态
+            public void SetStatus(bool isNumLockOn)
+            {
+                try
+                {
+                    statusLabel.Text = isNumLockOn ? "NumLock: 开启" : "NumLock: 关闭";
+                    statusLabel.ForeColor = isNumLockOn ? Color.LightGreen : Color.LightCoral;
+                    Debug.WriteLine("设置状态文本: " + statusLabel.Text);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("设置状态文本时出错: " + ex.Message);
+                }
+            }
+            
+            // 显示窗体一段时间后自动关闭
+            public void ShowForDuration(int milliseconds)
+            {
+                try
+                {
+                    // 停止现有定时器
+                    closeTimer.Stop();
+                    closeTimer.Interval = milliseconds;
+                    
+                    // 显示窗体
+                    this.Show();
+                    this.Refresh();
+                    
+                    // 确保窗体置顶
+                    this.BringToFront();
+                    this.SetWindowPos();
+                    
+                    Debug.WriteLine("窗体显示，设置计时器: " + milliseconds + "ms");
+                    
+                    // 启动定时器
+                    closeTimer.Start();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("显示窗体时出错: " + ex.Message);
+                }
+            }
+            
+            // 设置窗体置顶
+            private void SetWindowPos()
+            {
+                try
+                {
+                    NativeMethods.SetWindowPos(
+                        this.Handle, 
+                        NativeMethods.HWND_TOPMOST, 
+                        0, 0, 0, 0, 
+                        NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_SHOWWINDOW);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("设置窗口位置时出错: " + ex.Message);
+                }
+            }
+            
+            // 设置窗口样式
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ExStyle |= 0x00000080 | 0x00000008 | 0x08000000;
+                    return cp;
+                }
+            }
+        }
     }
-} 
+    
+    // Windows API 调用封装
+    internal static class NativeMethods
+    {
+        public const int SWP_NOMOVE = 0x0002;
+        public const int SWP_NOSIZE = 0x0001;
+        public const int SWP_SHOWWINDOW = 0x0040;
+        public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    }
+}
