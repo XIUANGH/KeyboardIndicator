@@ -292,42 +292,57 @@ namespace KeyboardIndicator
                         
                         if (isNumLockKey)
                         {
-                            // 记录初始NumLock状态
-                            bool initialNumLockState = Control.IsKeyLocked(Keys.NumLock);
-                            bool stateChanged = false;
-                            bool lastState = initialNumLockState;
+                            // 先等待系统处理NumLock键
+                            Thread.Sleep(50);
                             
-                            // 使用原有的循环监控状态变化
-                            for (int i = 0; i < this.curCount; i++)
+                            // 读取当前NumLock状态
+                            bool currentState = Control.IsKeyLocked(Keys.NumLock);
+                            
+                            // 初始状态标记
+                            bool initialState = currentState;
+                            bool stateChanged = false;
+                            int stateCheckCounter = 0;
+                            
+                            // 通过循环多次检测状态变化来确保准确性
+                            while (stateCheckCounter < 200) // 最多检查10次(200ms)
                             {
-                                // 更新系统托盘图标状态
+                                // 更新托盘图标
                                 this.SetStatus();
                                 
-                                // 检查当前NumLock状态
-                                bool currentState = Control.IsKeyLocked(Keys.NumLock);
+                                // 再次检查当前状态
+                                bool newState = Control.IsKeyLocked(Keys.NumLock);
                                 
-                                // 检测到状态变化
-                                if (currentState != lastState)
+                                // 如果状态发生变化或者是首次按键(无论状态如何)
+                                if (newState != initialState || stateCheckCounter == 0)
                                 {
-                                    lastState = currentState;
                                     stateChanged = true;
                                     
                                     try
                                     {
-                                        // 显示状态变化
+                                        // 显示当前状态
                                         if (numLockOverlay != null)
                                         {
-                                            numLockOverlay.ShowStatus(currentState, 1000);
+                                            numLockOverlay.ShowStatus(newState, 10);
+                                            Debug.WriteLine("显示NumLock状态: " + newState);
                                         }
-                                        Debug.WriteLine("显示NumLock状态: " + currentState);
-                                        Debug.WriteLine(numLockOverlay==null);
                                     }
                                     catch (Exception ex)
                                     {
                                         Debug.WriteLine("显示NumLock状态时出错: " + ex.Message);
                                     }
+                                    
+                                    // 更新初始状态以避免重复显示
+                                    initialState = newState;
                                 }
                                 
+                                Thread.Sleep(20);
+                                stateCheckCounter++;
+                            }
+                            
+                            // 继续原有的剩余循环用于更新托盘图标
+                            for (int i = stateCheckCounter; i < this.curCount; i++)
+                            {
+                                this.SetStatus();
                                 Thread.Sleep(20);
                                 this.curCount--;
                             }

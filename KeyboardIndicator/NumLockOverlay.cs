@@ -11,6 +11,7 @@ namespace KeyboardIndicator
         private StatusForm statusForm;
         private bool disposed = false;
         private static readonly object syncLock = new object();
+        private bool isFirstCall = true; // 添加标记判断是否首次调用
         
         // 定义兼容.NET 2.0的委托
         private delegate void NoParamDelegate();
@@ -18,7 +19,8 @@ namespace KeyboardIndicator
         
         public NumLockOverlay()
         {
-            // 不在构造函数中创建窗体，延迟到需要时创建
+            // 在构造函数中预先创建窗体，确保第一次调用时已就绪
+            CreateStatusForm();
         }
         
         public void ShowStatus(bool isNumLockOn, int displayTimeMs)
@@ -29,11 +31,17 @@ namespace KeyboardIndicator
             {
                 Debug.WriteLine("ShowStatus被调用: NumLock=" + isNumLockOn);
                 
-                // 在UI线程上创建和显示窗体
-                if (statusForm == null || statusForm.IsDisposed)
+                // 处理首次调用的特殊情况
+                if (isFirstCall)
                 {
-                    // 创建窗体
-                    CreateStatusForm();
+                    isFirstCall = false;
+                    // 确保窗体已创建并完全初始化
+                    if (statusForm == null || statusForm.IsDisposed)
+                    {
+                        CreateStatusForm();
+                        // 给窗体一点时间初始化
+                        System.Threading.Thread.Sleep(50);
+                    }
                 }
                 
                 // 更新和显示窗体
