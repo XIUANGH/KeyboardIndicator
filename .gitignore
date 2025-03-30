@@ -1,0 +1,13 @@
+.vs/*
+.specstory/*
+.vscode/*
+.idea/*
+.DS_Store
+KeyboardIndicator/obj/*
+KeyboardIndicator/bin/*
+KeyboardIndicator/bin/Debug/*
+KeyboardIndicator/bin/Release/*
+KeyboardIndicator/bin/x64/*
+KeyboardIndicator/bin/x86/*
+KeyboardIndicator/bin/x64/Debug/*
+KeyboardIndicator/bin/x64/Release/*

@@ -60,12 +60,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="KeyboardIndicator.cs">
-      <SubType>Form</SubType>
-    </Compile>
+    <Compile Include="KeyboardIndicator.cs" />
     <Compile Include="KeyboardIndicator.Designer.cs">
       <DependentUpon>KeyboardIndicator.cs</DependentUpon>
     </Compile>
+    <Compile Include="NumLockOverlay.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="KeyboardIndicator.resx">

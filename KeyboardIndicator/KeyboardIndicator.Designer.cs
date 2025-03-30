@@ -16,8 +16,13 @@
             if (disposing && (components != null))
             {
                 components.Dispose();
+                if (numLockOverlay != null)
+                {
+                    numLockOverlay.Dispose();
+                }
             }
             base.Dispose(disposing);
+            
         }
 
         #region Windows Form Designer generated code
@@ -38,6 +43,7 @@
             this.notifyIconNUM.Text = "notifyIconNUM";
             this.notifyIconNUM.Visible = true;
             this.notifyIconNUM.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.notifyIcon_MouseDoubleClick);
+            this.notifyIconNUM.MouseClick += new System.Windows.Forms.MouseEventHandler(this.notifyIcon_MouseSingleClick);
             // 
             // notifyIconCAPS
             // 
@@ -54,6 +60,9 @@
             this.ShowInTaskbar = false;
             this.Text = "Form1";
             this.ResumeLayout(false);
+
+            //numLockOverlay = new NumLockOverlay();
+
 
         }
 
