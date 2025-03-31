@@ -153,7 +153,7 @@ namespace KeyboardIndicator
         private class StatusForm : Form
         {
             private Label statusLabel;
-            private System.Windows.Forms.Timer closeTimer;
+            private System.Timers.Timer closeTimer; // 使用System.Timers.Timer
             
             public StatusForm()
             {
@@ -184,18 +184,65 @@ namespace KeyboardIndicator
                     statusLabel.Text = "初始化...";
                     this.Controls.Add(statusLabel);
                     
-                    // 初始化定时器
-                    closeTimer = new System.Windows.Forms.Timer();
-                    closeTimer.Interval = 1000;
-                    closeTimer.Tick += (s, e) => {
-                        Debug.WriteLine("计时器触发，隐藏窗体");
-                        closeTimer.Stop();
-                        this.Hide();
-                    };
+                    // 初始化System.Timers.Timer
+                    closeTimer = new System.Timers.Timer();
+                    closeTimer.AutoReset = false; // 只触发一次
+                    closeTimer.Elapsed += new System.Timers.ElapsedEventHandler(CloseTimer_Elapsed);
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine("初始化窗体组件错误: " + ex.Message);
+                }
+            }
+            
+            // Timer.Elapsed事件处理程序
+            private void CloseTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+            {
+                try
+                {
+                    Debug.WriteLine("计时器触发，准备隐藏窗体");
+                    
+                    // 在UI线程上执行隐藏操作
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                    {
+                        try
+                        {
+                            Debug.WriteLine("尝试使用Invoke同步调用隐藏窗体");
+                            // 使用同步Invoke而非异步BeginInvoke
+                            this.Invoke(new MethodInvoker(delegate {
+                                Debug.WriteLine("开始隐藏窗体 - 同步调用");
+                                if (!this.IsDisposed && this.Visible)
+                                {
+                                    Debug.WriteLine("在UI线程同步隐藏窗体");
+                                    this.Hide();
+                                }
+                            }));
+                        }
+                        catch (Exception invokeEx)
+                        {
+                            Debug.WriteLine("Invoke隐藏窗体出错: " + invokeEx.Message);
+                            
+                            // 备用方案：使用Control.Invoke的重载方法
+                            if (this.IsHandleCreated && !this.IsDisposed)
+                            {
+                                try
+                                {
+                                    Debug.WriteLine("尝试备用方案隐藏窗体");
+                                    Control.CheckForIllegalCrossThreadCalls = false; // 临时禁用跨线程检查
+                                    this.Hide();
+                                    Control.CheckForIllegalCrossThreadCalls = true; // 恢复跨线程检查
+                                }
+                                catch (Exception fallbackEx)
+                                {
+                                    Debug.WriteLine("备用隐藏方案失败: " + fallbackEx.Message);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("计时器回调中出错: " + ex.Message);
                 }
             }
             
@@ -268,6 +315,22 @@ namespace KeyboardIndicator
                     cp.ExStyle |= 0x00000080 | 0x00000008 | 0x08000000;
                     return cp;
                 }
+            }
+            
+            // 资源释放
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    if (closeTimer != null)
+                    {
+                        closeTimer.Stop();
+                        closeTimer.Elapsed -= CloseTimer_Elapsed;
+                        closeTimer.Dispose();
+                        closeTimer = null;
+                    }
+                }
+                base.Dispose(disposing);
             }
         }
     }
