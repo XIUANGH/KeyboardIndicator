@@ -1,3 +1,12 @@
+在[SunHubert/KeyboardIndicator](https://github.com/SunHubert/KeyboardIndicator)基础上修改,
+添加了以下功能：
+- 添加了NumLock状态指示窗口，按下之后出现一个弹窗显示NumLock状态，并显示一段时间后自动关闭
+- 菜单项添加了“开机启动”选项，可选择是否开机启动
+
+示意图：
+![开启NumLock](images/open.png)
+![关闭NumLock](images/close.png)
+
 **copy from [【原创】小键盘NumLock状态指示工具](http://www.cnblogs.com/laozuan/p/3375618.html)**
 *****
 
