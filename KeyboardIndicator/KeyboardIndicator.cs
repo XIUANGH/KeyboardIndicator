@@ -322,7 +322,7 @@ namespace KeyboardIndicator
                                         // 显示当前状态
                                         if (numLockOverlay != null)
                                         {
-                                            numLockOverlay.ShowStatus(newState, 10);
+                                            numLockOverlay.ShowStatus(newState, 1000);
                                             Debug.WriteLine("显示NumLock状态: " + newState);
                                         }
                                     }
