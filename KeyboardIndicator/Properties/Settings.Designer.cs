@@ -58,5 +58,29 @@ namespace KeyboardIndicator.Properties {
                 this["ShiftIndicator"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShiftAutoDetect {
+            get {
+                return ((bool)(this["ShiftAutoDetect"]));
+            }
+            set {
+                this["ShiftAutoDetect"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShiftManualIsZh {
+            get {
+                return ((bool)(this["ShiftManualIsZh"]));
+            }
+            set {
+                this["ShiftManualIsZh"] = value;
+            }
+        }
     }
 }

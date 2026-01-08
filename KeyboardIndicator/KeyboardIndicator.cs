@@ -82,6 +82,7 @@ namespace KeyboardIndicator
         private const int NUM_KEYCODE = 144;//Num Lock键：VK_NUMLOCK (144)
         private const int CAPS_KEYCODE = 20;//Caps Lock键：VK_CAPITAL (20)
         private const int SHIFT_KEYCODE = 160;//Left Shift键：VK_LSHIFT (160)
+        private const int LANG_CHINESE = 0x04;
 
         private KeyboardIndicator.KeyBoardHookStruct kbh;
         private KeyboardIndicator.HookProc gHookProc;
@@ -125,6 +126,29 @@ namespace KeyboardIndicator
             public short wParamH;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GUITHREADINFO
+        {
+            public int cbSize;
+            public int flags;
+            public IntPtr hwndActive;
+            public IntPtr hwndFocus;
+            public IntPtr hwndCapture;
+            public IntPtr hwndMenuOwner;
+            public IntPtr hwndMoveSize;
+            public IntPtr hwndCaret;
+            public RECT rcCaret;
+        }
+
         [DllImport("user32")]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
@@ -133,6 +157,15 @@ namespace KeyboardIndicator
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetKeyboardLayout(uint idThread);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
 
         [DllImport("imm32.dll")]
         private static extern IntPtr ImmGetContext(IntPtr hWnd);
@@ -150,10 +183,16 @@ namespace KeyboardIndicator
         private bool showCapsLock = false;
         private bool showShift = false;
         private bool shiftImeOpen = false;
+        private bool shiftAutoDetect = true;
+        private bool shiftManualIsZh = false;
         private bool shiftKeyDown = false;
 
         private ContextMenu trayMenu;
         private MenuItem shiftMenuItem;
+        private MenuItem shiftModeMenuItem;
+        private MenuItem shiftModeAutoMenuItem;
+        private MenuItem shiftModeZhMenuItem;
+        private MenuItem shiftModeEnMenuItem;
 
         //private Label statusLabel;
         //private Timer disappearTimer;
@@ -175,10 +214,22 @@ namespace KeyboardIndicator
             trayMenu.MenuItems.Add("开机自启动状态:" + startUpStatus, ToggleStartup);
 
             showShift = Properties.Settings.Default.ShiftIndicator;
+            shiftAutoDetect = Properties.Settings.Default.ShiftAutoDetect;
+            shiftManualIsZh = Properties.Settings.Default.ShiftManualIsZh;
             shiftMenuItem = new MenuItem();
             UpdateShiftMenu();
             shiftMenuItem.Click += ToggleShiftIndicator;
             trayMenu.MenuItems.Add(shiftMenuItem);
+
+            shiftModeMenuItem = new MenuItem("Shift状态");
+            shiftModeAutoMenuItem = new MenuItem("自动检测", SetShiftModeAuto);
+            shiftModeZhMenuItem = new MenuItem("设为中文", SetShiftModeZh);
+            shiftModeEnMenuItem = new MenuItem("设为英文", SetShiftModeEn);
+            shiftModeMenuItem.MenuItems.Add(shiftModeAutoMenuItem);
+            shiftModeMenuItem.MenuItems.Add(shiftModeZhMenuItem);
+            shiftModeMenuItem.MenuItems.Add(shiftModeEnMenuItem);
+            UpdateShiftModeMenu();
+            trayMenu.MenuItems.Add(shiftModeMenuItem);
 
             // 将右键菜单关联到通知图标
             notifyIconNUM.ContextMenu = trayMenu;
@@ -271,6 +322,49 @@ namespace KeyboardIndicator
         private void UpdateShiftMenu()
         {
             shiftMenuItem.Text = "左Shift提示: " + (showShift ? "已开启" : "未开启");
+        }
+
+        private void SetShiftModeAuto(object sender, EventArgs e)
+        {
+            shiftAutoDetect = true;
+            Properties.Settings.Default.ShiftAutoDetect = shiftAutoDetect;
+            Properties.Settings.Default.Save();
+            RefreshShiftImeStatus();
+            UpdateShiftModeMenu();
+            this.SetStatus();
+        }
+
+        private void SetShiftModeZh(object sender, EventArgs e)
+        {
+            SetShiftManualState(true);
+        }
+
+        private void SetShiftModeEn(object sender, EventArgs e)
+        {
+            SetShiftManualState(false);
+        }
+
+        private void SetShiftManualState(bool isZh)
+        {
+            shiftAutoDetect = false;
+            shiftManualIsZh = isZh;
+            shiftImeOpen = isZh;
+            Properties.Settings.Default.ShiftAutoDetect = shiftAutoDetect;
+            Properties.Settings.Default.ShiftManualIsZh = shiftManualIsZh;
+            Properties.Settings.Default.Save();
+            UpdateShiftModeMenu();
+            this.SetStatus();
+        }
+
+        private void UpdateShiftModeMenu()
+        {
+            if (shiftModeAutoMenuItem == null)
+            {
+                return;
+            }
+            shiftModeAutoMenuItem.Checked = shiftAutoDetect;
+            shiftModeZhMenuItem.Checked = !shiftAutoDetect && shiftManualIsZh;
+            shiftModeEnMenuItem.Checked = !shiftAutoDetect && !shiftManualIsZh;
         }
 
         public void SetStartup(bool enable)
@@ -440,21 +534,38 @@ namespace KeyboardIndicator
                 ThreadPool.QueueUserWorkItem(delegate (object param0)
                 {
                     Thread.Sleep(50);
-                    bool newState;
-                    if (!TryGetImeOpenStatus(out newState))
+                    bool newState = shiftImeOpen;
+                    bool gotState = false;
+                    if (shiftAutoDetect)
+                    {
+                        for (int i = 0; i < 6; i++)
+                        {
+                            if (TryGetCurrentShiftState(out newState))
+                            {
+                                gotState = true;
+                                if (newState != shiftImeOpen || i == 5)
+                                {
+                                    break;
+                                }
+                            }
+                            Thread.Sleep(30);
+                        }
+                    }
+                    if (!gotState)
                     {
                         newState = !shiftImeOpen;
                     }
-                    if (newState != shiftImeOpen)
+                    shiftImeOpen = newState;
+                    if (!shiftAutoDetect)
                     {
-                        shiftImeOpen = newState;
-                        SetStatus();
-                        if (shiftOverlay != null)
-                        {
-                            string text = newState ? "Shift: 中文" : "Shift: 英文";
-                            Color color = newState ? Color.LightGreen : Color.LightSkyBlue;
-                            shiftOverlay.ShowStatus(text, color, 1000);
-                        }
+                        shiftManualIsZh = newState;
+                    }
+                    SetStatus();
+                    if (shiftOverlay != null)
+                    {
+                        string text = newState ? "Shift: 中文" : "Shift: 英文";
+                        Color color = newState ? Color.LightGreen : Color.LightSkyBlue;
+                        shiftOverlay.ShowStatus(text, color, 1000);
                     }
                 });
             }
@@ -466,17 +577,73 @@ namespace KeyboardIndicator
 
         private void RefreshShiftImeStatus()
         {
+            if (!shiftAutoDetect)
+            {
+                shiftImeOpen = shiftManualIsZh;
+                return;
+            }
             bool currentState;
-            if (TryGetImeOpenStatus(out currentState))
+            if (TryGetCurrentShiftState(out currentState))
             {
                 shiftImeOpen = currentState;
             }
         }
 
+        private bool TryGetCurrentShiftState(out bool isZh)
+        {
+            isZh = false;
+            bool isChineseLayout;
+            bool hasLayout = TryGetInputLanguageIsChinese(out isChineseLayout);
+
+            bool imeOpen;
+            if (TryGetImeOpenStatus(out imeOpen))
+            {
+                if (hasLayout && !isChineseLayout)
+                {
+                    isZh = false;
+                    return true;
+                }
+                isZh = imeOpen;
+                return true;
+            }
+
+            if (hasLayout && !isChineseLayout)
+            {
+                isZh = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetInputLanguageIsChinese(out bool isChinese)
+        {
+            isChinese = false;
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero)
+            {
+                return false;
+            }
+            uint threadId = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
+            if (threadId == 0)
+            {
+                return false;
+            }
+            IntPtr hkl = GetKeyboardLayout(threadId);
+            if (hkl == IntPtr.Zero)
+            {
+                return false;
+            }
+            ushort langId = (ushort)((uint)hkl.ToInt64() & 0xFFFF);
+            ushort primaryLangId = (ushort)(langId & 0x03FF);
+            isChinese = primaryLangId == LANG_CHINESE;
+            return true;
+        }
+
         private bool TryGetImeOpenStatus(out bool isOpen)
         {
             isOpen = false;
-            IntPtr hwnd = GetForegroundWindow();
+            IntPtr hwnd = GetImeContextWindow();
             if (hwnd == IntPtr.Zero)
             {
                 return false;
@@ -495,6 +662,33 @@ namespace KeyboardIndicator
             {
                 ImmReleaseContext(hwnd, imc);
             }
+        }
+
+        private IntPtr GetImeContextWindow()
+        {
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero)
+            {
+                return IntPtr.Zero;
+            }
+            uint threadId = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
+            if (threadId != 0)
+            {
+                GUITHREADINFO info = new GUITHREADINFO();
+                info.cbSize = Marshal.SizeOf(info);
+                if (GetGUIThreadInfo(threadId, ref info))
+                {
+                    if (info.hwndFocus != IntPtr.Zero)
+                    {
+                        return info.hwndFocus;
+                    }
+                    if (info.hwndActive != IntPtr.Zero)
+                    {
+                        return info.hwndActive;
+                    }
+                }
+            }
+            return hwnd;
         }
 
         private void SetStatus()
