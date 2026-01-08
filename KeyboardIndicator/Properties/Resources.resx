@@ -130,4 +130,10 @@
   <data name="NumLockOpen" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\resources\numlockopen.ico;System.Drawing.Icon, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="ShiftEn" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\resources\shiften.ico;System.Drawing.Icon, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="ShiftZh" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\resources\shiftzh.ico;System.Drawing.Icon, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
 </root>

@@ -113,6 +113,8 @@
     <Content Include="KeyboardIndicator.ico" />
     <None Include="Resources\CapsLockClose.ico" />
     <None Include="Resources\CapsLockOpen.ico" />
+    <None Include="Resources\ShiftEn.ico" />
+    <None Include="Resources\ShiftZh.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

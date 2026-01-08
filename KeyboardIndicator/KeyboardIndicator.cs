@@ -75,9 +75,13 @@ namespace KeyboardIndicator
 
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 256;
+        private const int WM_KEYUP = 257;
+        private const int WM_SYSKEYDOWN = 260;
+        private const int WM_SYSKEYUP = 261;
 
         private const int NUM_KEYCODE = 144;//Num Lock键：VK_NUMLOCK (144)
         private const int CAPS_KEYCODE = 20;//Caps Lock键：VK_CAPITAL (20)
+        private const int SHIFT_KEYCODE = 160;//Left Shift键：VK_LSHIFT (160)
 
         private KeyboardIndicator.KeyBoardHookStruct kbh;
         private KeyboardIndicator.HookProc gHookProc;
@@ -128,16 +132,33 @@ namespace KeyboardIndicator
         public static extern short GetKeyState(int nVirtKey);
 
         [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("imm32.dll")]
+        private static extern IntPtr ImmGetContext(IntPtr hWnd);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmGetOpenStatus(IntPtr hIMC);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+        [DllImport("user32.dll")]
         public static extern int SetWindowsHookEx(int idHook, KeyboardIndicator.HookProc lpfn, IntPtr hInstance, int threadId);
 
         private bool showNumLock = false;
         private bool showCapsLock = false;
+        private bool showShift = false;
+        private bool shiftImeOpen = false;
+        private bool shiftKeyDown = false;
 
         private ContextMenu trayMenu;
+        private MenuItem shiftMenuItem;
 
         //private Label statusLabel;
         //private Timer disappearTimer;
         private NumLockOverlay numLockOverlay;
+        private NumLockOverlay shiftOverlay;
         private IntPtr hookID = IntPtr.Zero;
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
@@ -153,9 +174,16 @@ namespace KeyboardIndicator
             
             trayMenu.MenuItems.Add("开机自启动状态:" + startUpStatus, ToggleStartup);
 
+            showShift = Properties.Settings.Default.ShiftIndicator;
+            shiftMenuItem = new MenuItem();
+            UpdateShiftMenu();
+            shiftMenuItem.Click += ToggleShiftIndicator;
+            trayMenu.MenuItems.Add(shiftMenuItem);
+
             // 将右键菜单关联到通知图标
             notifyIconNUM.ContextMenu = trayMenu;
             notifyIconCAPS.ContextMenu = trayMenu;
+            notifyIconSHIFT.ContextMenu = trayMenu;
             
             try
             {
@@ -175,13 +203,14 @@ namespace KeyboardIndicator
                 showCapsLock = false;
             }
 
-            if (!showNumLock && !showCapsLock)
+            if (!showNumLock && !showCapsLock && !showShift)
             {
                 showNumLock = true;
             }
 
             // 在设置钩子前初始化Overlay
             InitializeOverlay();
+            RefreshShiftImeStatus();
             
             this.SetStatus();
             this.gHookProc = new KeyboardIndicator.HookProc(this.KeyBoardHookProc);
@@ -226,6 +255,24 @@ namespace KeyboardIndicator
             trayMenu.MenuItems[0].Text = "开机自启动状态: " + (currentStartupStatus ? "已开启" : "未开启");
         }
 
+        private void ToggleShiftIndicator(object sender, EventArgs e)
+        {
+            showShift = !showShift;
+            Properties.Settings.Default.ShiftIndicator = showShift;
+            Properties.Settings.Default.Save();
+            UpdateShiftMenu();
+            if (showShift)
+            {
+                RefreshShiftImeStatus();
+            }
+            this.SetStatus();
+        }
+
+        private void UpdateShiftMenu()
+        {
+            shiftMenuItem.Text = "左Shift提示: " + (showShift ? "已开启" : "未开启");
+        }
+
         public void SetStartup(bool enable)
         {
             string runKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -263,10 +310,11 @@ namespace KeyboardIndicator
             try
             {
                 numLockOverlay = new NumLockOverlay();
+                shiftOverlay = new NumLockOverlay();
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("无法初始化NumLockOverlay: " + ex.Message);
+                Debug.WriteLine("无法初始化Overlay: " + ex.Message);
             }
         }
 
@@ -281,6 +329,10 @@ namespace KeyboardIndicator
             try
             {
                 this.kbh = (KeyboardIndicator.KeyBoardHookStruct)Marshal.PtrToStructure(lParam, typeof(KeyboardIndicator.KeyBoardHookStruct));
+                if (this.kbh.vkCode == SHIFT_KEYCODE)
+                {
+                    HandleShiftKey(wParam);
+                }
                 if (!this.isRunning && (this.kbh.vkCode == NUM_KEYCODE || this.kbh.vkCode == CAPS_KEYCODE))
                 {
                     bool isNumLockKey = this.kbh.vkCode == NUM_KEYCODE;
@@ -372,6 +424,79 @@ namespace KeyboardIndicator
             }
         }
 
+        private void HandleShiftKey(int wParam)
+        {
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
+            {
+                if (shiftKeyDown)
+                {
+                    return;
+                }
+                shiftKeyDown = true;
+                if (!showShift)
+                {
+                    return;
+                }
+                ThreadPool.QueueUserWorkItem(delegate (object param0)
+                {
+                    Thread.Sleep(50);
+                    bool newState;
+                    if (!TryGetImeOpenStatus(out newState))
+                    {
+                        newState = !shiftImeOpen;
+                    }
+                    if (newState != shiftImeOpen)
+                    {
+                        shiftImeOpen = newState;
+                        SetStatus();
+                        if (shiftOverlay != null)
+                        {
+                            string text = newState ? "Shift: 中文" : "Shift: 英文";
+                            Color color = newState ? Color.LightGreen : Color.LightSkyBlue;
+                            shiftOverlay.ShowStatus(text, color, 1000);
+                        }
+                    }
+                });
+            }
+            else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+            {
+                shiftKeyDown = false;
+            }
+        }
+
+        private void RefreshShiftImeStatus()
+        {
+            bool currentState;
+            if (TryGetImeOpenStatus(out currentState))
+            {
+                shiftImeOpen = currentState;
+            }
+        }
+
+        private bool TryGetImeOpenStatus(out bool isOpen)
+        {
+            isOpen = false;
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero)
+            {
+                return false;
+            }
+            IntPtr imc = ImmGetContext(hwnd);
+            if (imc == IntPtr.Zero)
+            {
+                return false;
+            }
+            try
+            {
+                isOpen = ImmGetOpenStatus(imc);
+                return true;
+            }
+            finally
+            {
+                ImmReleaseContext(hwnd, imc);
+            }
+        }
+
         private void SetStatus()
         {
             if (this.InvokeRequired)
@@ -381,6 +506,7 @@ namespace KeyboardIndicator
             }
             this.notifyIconNUM.Visible = showNumLock;
             this.notifyIconCAPS.Visible = showCapsLock;
+            this.notifyIconSHIFT.Visible = showShift;
 
             if (showNumLock)
             {
@@ -407,6 +533,20 @@ namespace KeyboardIndicator
                 {
                     this.notifyIconCAPS.Icon = Resources.CapsLockClose;
                     this.notifyIconCAPS.Text = "CapsLock Off";
+                }
+            }
+
+            if (showShift)
+            {
+                if (shiftImeOpen)
+                {
+                    this.notifyIconSHIFT.Icon = Resources.ShiftZh;
+                    this.notifyIconSHIFT.Text = "Shift: 中文";
+                }
+                else
+                {
+                    this.notifyIconSHIFT.Icon = Resources.ShiftEn;
+                    this.notifyIconSHIFT.Text = "Shift: 英文";
                 }
             }
         }

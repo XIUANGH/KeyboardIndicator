@@ -20,16 +20,23 @@ namespace KeyboardIndicator
         
         public void ShowStatus(bool isNumLockOn, int displayTimeMs)
         {
+            string text = isNumLockOn ? "NumLock: 开启" : "NumLock: 关闭";
+            Color textColor = isNumLockOn ? Color.LightGreen : Color.LightCoral;
+            ShowStatus(text, textColor, displayTimeMs);
+        }
+
+        public void ShowStatus(string text, Color textColor, int displayTimeMs)
+        {
             if (disposed) return;
-            
+
             try
             {
-                Debug.WriteLine("ShowStatus被调用: NumLock=" + isNumLockOn);
-                
+                Debug.WriteLine("ShowStatus被调用: " + text);
+
                 // 创建新窗体并在新线程中显示
                 ThreadPool.QueueUserWorkItem(new WaitCallback(delegate(object state) {
                     try {
-                        ShowStatusWindow(isNumLockOn, displayTimeMs);
+                        ShowStatusWindow(text, textColor, displayTimeMs);
                     }
                     catch (Exception ex) {
                         Debug.WriteLine("线程池显示窗体错误: " + ex.Message);
@@ -42,7 +49,7 @@ namespace KeyboardIndicator
             }
         }
         
-        private void ShowStatusWindow(bool isNumLockOn, int displayTimeMs)
+        private void ShowStatusWindow(string text, Color textColor, int displayTimeMs)
         {
             // 检查现有窗体并关闭
             if (displayForm != null)
@@ -77,10 +84,10 @@ namespace KeyboardIndicator
             Label statusLabel = new Label();
             statusLabel.Dock = DockStyle.Fill;
             statusLabel.Font = new Font("微软雅黑", 16F, FontStyle.Bold);
-            statusLabel.ForeColor = isNumLockOn ? Color.LightGreen : Color.LightCoral;
+            statusLabel.ForeColor = textColor;
             statusLabel.TextAlign = ContentAlignment.MiddleCenter;
             statusLabel.BackColor = Color.Transparent;
-            statusLabel.Text = isNumLockOn ? "NumLock: 开启" : "NumLock: 关闭";
+            statusLabel.Text = text;
             statusForm.Controls.Add(statusLabel);
             
             Debug.WriteLine("准备显示新窗体 - 线程ID: " + Thread.CurrentThread.ManagedThreadId);

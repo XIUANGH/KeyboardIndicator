@@ -20,6 +20,10 @@
                 {
                     numLockOverlay.Dispose();
                 }
+                if (shiftOverlay != null)
+                {
+                    shiftOverlay.Dispose();
+                }
             }
             base.Dispose(disposing);
             
@@ -36,6 +40,7 @@
             this.components = new System.ComponentModel.Container();
             this.notifyIconNUM = new System.Windows.Forms.NotifyIcon(this.components);
             this.notifyIconCAPS = new System.Windows.Forms.NotifyIcon(this.components);
+            this.notifyIconSHIFT = new System.Windows.Forms.NotifyIcon(this.components);
             this.SuspendLayout();
             // 
             // notifyIconNUM
@@ -50,6 +55,12 @@
             this.notifyIconCAPS.Text = "notifyIconCAPS";
             this.notifyIconCAPS.Visible = true;
             this.notifyIconCAPS.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.notifyIcon_MouseDoubleClick);
+            // 
+            // notifyIconSHIFT
+            // 
+            this.notifyIconSHIFT.Text = "notifyIconSHIFT";
+            this.notifyIconSHIFT.Visible = true;
+            this.notifyIconSHIFT.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.notifyIcon_MouseDoubleClick);
             // 
             // KeyboardIndicator
             // 
@@ -70,5 +81,6 @@
 
         private System.Windows.Forms.NotifyIcon notifyIconNUM;
         private System.Windows.Forms.NotifyIcon notifyIconCAPS;
+        private System.Windows.Forms.NotifyIcon notifyIconSHIFT;
     }
 }

@@ -46,5 +46,17 @@ namespace KeyboardIndicator.Properties {
                 this["Setting"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShiftIndicator {
+            get {
+                return ((bool)(this["ShiftIndicator"]));
+            }
+            set {
+                this["ShiftIndicator"] = value;
+            }
+        }
     }
 }
