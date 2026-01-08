@@ -51,25 +51,14 @@ namespace KeyboardIndicator
         
         private void ShowStatusWindow(string text, Color textColor, int displayTimeMs)
         {
-            // 检查现有窗体并关闭
-            if (displayForm != null)
-            {
-                try
-                {
-                    if (!displayForm.IsDisposed)
-                    {
-                        displayForm.Invoke(new MethodInvoker(delegate {
-                            try { displayForm.Close(); } catch { }
-                        }));
-                    }
-                }
-                catch { }
-                displayForm = null;
-            }
+            CloseDisplayForm();
             
             // 创建新窗体实例
             Form statusForm = new Form();
-            displayForm = statusForm;
+            lock (syncLock)
+            {
+                displayForm = statusForm;
+            }
             
             // 配置窗体
             statusForm.FormBorderStyle = FormBorderStyle.None;
@@ -98,8 +87,14 @@ namespace KeyboardIndicator
             closeTimer.Tick += delegate(object sender, EventArgs e) {
                 Debug.WriteLine("计时器触发，关闭窗体");
                 closeTimer.Stop();
-                statusForm.Close();
-                displayForm = null;
+                try { statusForm.Close(); } catch { }
+                lock (syncLock)
+                {
+                    if (displayForm == statusForm)
+                    {
+                        displayForm = null;
+                    }
+                }
             };
             
             // 显示窗体并启动消息循环
@@ -114,6 +109,13 @@ namespace KeyboardIndicator
             // 这是关键 - 运行独立的消息循环
             Application.Run(statusForm);
             
+            lock (syncLock)
+            {
+                if (displayForm == statusForm)
+                {
+                    displayForm = null;
+                }
+            }
             Debug.WriteLine("窗体消息循环结束");
         }
         
@@ -140,17 +142,7 @@ namespace KeyboardIndicator
             {
                 try
                 {
-                    if (displayForm != null && !displayForm.IsDisposed)
-                    {
-                        try
-                        {
-                            displayForm.Invoke(new MethodInvoker(delegate {
-                                displayForm.Close();
-                            }));
-                        }
-                        catch { }
-                        displayForm = null;
-                    }
+                    CloseDisplayForm();
                 }
                 catch (Exception ex)
                 {
@@ -164,6 +156,42 @@ namespace KeyboardIndicator
         ~NumLockOverlay()
         {
             Dispose();
+        }
+
+        private void CloseDisplayForm()
+        {
+            Form formToClose = null;
+            lock (syncLock)
+            {
+                formToClose = displayForm;
+                displayForm = null;
+            }
+            if (formToClose == null)
+            {
+                return;
+            }
+            try
+            {
+                if (formToClose.IsDisposed)
+                {
+                    return;
+                }
+                if (formToClose.IsHandleCreated)
+                {
+                    try
+                    {
+                        formToClose.BeginInvoke(new MethodInvoker(delegate {
+                            try { formToClose.Close(); } catch { }
+                        }));
+                    }
+                    catch { }
+                }
+                else
+                {
+                    try { formToClose.Close(); } catch { }
+                }
+            }
+            catch { }
         }
     }
     

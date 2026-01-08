@@ -83,6 +83,10 @@ namespace KeyboardIndicator
         private const int CAPS_KEYCODE = 20;//Caps Lock键：VK_CAPITAL (20)
         private const int SHIFT_KEYCODE = 160;//Left Shift键：VK_LSHIFT (160)
         private const int LANG_CHINESE = 0x04;
+        private const int VK_CONTROL = 17;
+        private const int VK_MENU = 18;
+        private const int VK_LWIN = 91;
+        private const int VK_RWIN = 92;
 
         private KeyboardIndicator.KeyBoardHookStruct kbh;
         private KeyboardIndicator.HookProc gHookProc;
@@ -186,6 +190,7 @@ namespace KeyboardIndicator
         private bool shiftAutoDetect = true;
         private bool shiftManualIsZh = false;
         private bool shiftKeyDown = false;
+        private bool shiftUsedWithOtherKey = false;
 
         private ContextMenu trayMenu;
         private MenuItem shiftMenuItem;
@@ -358,6 +363,11 @@ namespace KeyboardIndicator
 
         private void UpdateShiftModeMenu()
         {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new MethodInvoker(UpdateShiftModeMenu));
+                return;
+            }
             if (shiftModeAutoMenuItem == null)
             {
                 return;
@@ -426,6 +436,10 @@ namespace KeyboardIndicator
                 if (this.kbh.vkCode == SHIFT_KEYCODE)
                 {
                     HandleShiftKey(wParam);
+                }
+                else if (shiftKeyDown && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
+                {
+                    shiftUsedWithOtherKey = true;
                 }
                 if (!this.isRunning && (this.kbh.vkCode == NUM_KEYCODE || this.kbh.vkCode == CAPS_KEYCODE))
                 {
@@ -527,10 +541,16 @@ namespace KeyboardIndicator
                     return;
                 }
                 shiftKeyDown = true;
+                shiftUsedWithOtherKey = IsModifierDown();
+            }
+            else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+            {
+                shiftKeyDown = false;
                 if (!showShift)
                 {
                     return;
                 }
+                bool allowManualToggle = !shiftUsedWithOtherKey && !IsModifierDown();
                 ThreadPool.QueueUserWorkItem(delegate (object param0)
                 {
                     Thread.Sleep(50);
@@ -543,7 +563,7 @@ namespace KeyboardIndicator
                             if (TryGetCurrentShiftState(out newState))
                             {
                                 gotState = true;
-                                if (newState != shiftImeOpen || i == 5)
+                                if (newState != shiftImeOpen)
                                 {
                                     break;
                                 }
@@ -551,14 +571,26 @@ namespace KeyboardIndicator
                             Thread.Sleep(30);
                         }
                     }
-                    if (!gotState)
+                    else
                     {
+                        if (!allowManualToggle)
+                        {
+                            return;
+                        }
                         newState = !shiftImeOpen;
+                        gotState = true;
+                    }
+                    if (!gotState || newState == shiftImeOpen)
+                    {
+                        return;
                     }
                     shiftImeOpen = newState;
                     if (!shiftAutoDetect)
                     {
                         shiftManualIsZh = newState;
+                        Properties.Settings.Default.ShiftManualIsZh = shiftManualIsZh;
+                        Properties.Settings.Default.Save();
+                        UpdateShiftModeMenu();
                     }
                     SetStatus();
                     if (shiftOverlay != null)
@@ -568,10 +600,6 @@ namespace KeyboardIndicator
                         shiftOverlay.ShowStatus(text, color, 1000);
                     }
                 });
-            }
-            else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
-            {
-                shiftKeyDown = false;
             }
         }
 
@@ -587,6 +615,14 @@ namespace KeyboardIndicator
             {
                 shiftImeOpen = currentState;
             }
+        }
+
+        private bool IsModifierDown()
+        {
+            return (GetKeyState(VK_CONTROL) & 0x8000) != 0
+                || (GetKeyState(VK_MENU) & 0x8000) != 0
+                || (GetKeyState(VK_LWIN) & 0x8000) != 0
+                || (GetKeyState(VK_RWIN) & 0x8000) != 0;
         }
 
         private bool TryGetCurrentShiftState(out bool isZh)
